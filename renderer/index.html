@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; img-src 'self' https: data:; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src https://fonts.gstatic.com;"
+    />
+    <title>gitter-done</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=Share+Tech+Mono&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="shell" id="shell">
+      <header class="top">
+        <div class="brand">gitter-done</div>
+        <div class="clock" id="clock"></div>
+        <button type="button" class="ghost" id="refresh" title="Refresh">↻</button>
+        <button type="button" class="ghost" id="quit" title="Close">×</button>
+      </header>
+      <button type="button" class="meta" id="meta">waiting on git</button>
+      <ol class="board" id="board"></ol>
+      <section class="you-wrap" id="youWrap" hidden>
+        <div class="rule"></div>
+        <div id="youRow"></div>
+        <p class="gap" id="gap"></p>
+      </section>
+      <p class="status" id="status"></p>
+    </div>
+    <script src="./renderer.js"></script>
+  </body>
+</html>

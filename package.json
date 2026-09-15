@@ -1,0 +1,30 @@
+{
+  "name": "gitter-done",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Always-on-top overlay that ranks today's git contributions for your org",
+  "main": "electron/main.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/adjit/gitter-done.git"
+  },
+  "homepage": "https://github.com/adjit/gitter-done#readme",
+  "bugs": {
+    "url": "https://github.com/adjit/gitter-done/issues"
+  },
+  "author": "adjit",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "electron .",
+    "board": "node src/print-board.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1"
+  },
+  "devDependencies": {
+    "electron": "^33.4.11"
+  }
+}
