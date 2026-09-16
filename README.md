@@ -4,7 +4,7 @@ Always-on-top desktop overlay that ranks **today’s git contributions** for you
 
 Shows the top 3 and your place. Click the board to expand the full leaderboard.
 
-![gitter-done overlay](docs/screenshot.png)
+![gitter-done overlay](docs/screenshot.jpg)
 
 ## Requirements
 
@@ -30,12 +30,12 @@ Copy-Item .env.example .env
 Edit `.env`:
 
 ```
-GIT_ORG=git.bruin.com/bruin
+GIT_ORG=github.com/my-org
 ```
 
 `GIT_ORG` is `host/org`. Examples:
 
-- `git.bruin.com/bruin`
+- `github.com/my-org`
 - `github.com/your-org`
 
 Log into that host (once per machine):
@@ -78,7 +78,7 @@ Bots (GitHub Actions, `*-bot`, Grafana) are excluded. People are ranked by commi
 
 | Variable | Required | Default | Meaning |
 | --- | --- | --- | --- |
-| `GIT_ORG` | yes | — | `host/org`, e.g. `git.bruin.com/bruin` |
+| `GIT_ORG` | yes | — | `host/org`, e.g. `github.com/my-org` |
 | `GH_TOKEN` | no | `gh auth token` for that host | API token |
 | `GIT_TZ` | no | `America/New_York` | Day boundary for “today” |
 | `POLL_MS` | no | `180000` | Refresh interval |

@@ -1,6 +1,6 @@
 function parseGitOrg(raw, ghHost) {
   if (!raw || !String(raw).trim()) {
-    throw new Error('Set GIT_ORG, e.g. GIT_ORG=git.bruin.com/bruin');
+    throw new Error('Set GIT_ORG, e.g. GIT_ORG=github.com/my-org');
   }
 
   const s = String(raw)
@@ -18,7 +18,7 @@ function parseGitOrg(raw, ghHost) {
   }
 
   throw new Error(
-    `Could not parse GIT_ORG="${raw}". Use host/org, e.g. git.bruin.com/bruin`
+    `Could not parse GIT_ORG="${raw}". Use host/org, e.g. github.com/my-org`
   );
 }
 
