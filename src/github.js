@@ -69,6 +69,36 @@ function overlappingUtcDates(estYmd) {
   return [addUtcDays(estYmd, -1), estYmd, addUtcDays(estYmd, 1)];
 }
 
+function listEstDays(endYmd, count) {
+  const days = [];
+  for (let i = count - 1; i >= 0; i -= 1) {
+    days.push(addUtcDays(endYmd, -i));
+  }
+  return days;
+}
+
+function clampDays(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return 1;
+  return Math.min(30, Math.max(1, Math.round(n)));
+}
+
+function commitEstDay(item) {
+  const iso = item.commit?.author?.date || item.commit?.committer?.date;
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return ymdInZone(d);
+}
+
+function inEstRange(iso, startYmd, endYmd) {
+  if (!iso) return false;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return false;
+  const ymd = ymdInZone(d);
+  return ymd >= startYmd && ymd <= endYmd;
+}
+
 function startOfDayUtc(ymd, tz = TZ) {
   const [y, m, d] = ymd.split('-').map(Number);
   for (let h = 2; h <= 7; h += 1) {
@@ -313,9 +343,9 @@ async function fetchPrCommits(host, token, org, from, to) {
   return bySha;
 }
 
-async function listRepoCommitsSince(host, token, fullName, sinceIso, sha) {
+async function listRepoCommitsSince(host, token, fullName, sinceIso, sha, maxPages = 5) {
   const items = [];
-  for (let page = 1; page <= 5; page += 1) {
+  for (let page = 1; page <= maxPages; page += 1) {
     const path =
       `repos/${fullName}/commits?since=${encodeURIComponent(sinceIso)}` +
       `&per_page=100&page=${page}&sha=${encodeURIComponent(sha)}`;
@@ -362,7 +392,7 @@ async function recentBranchNames(host, token, repo, sinceIso) {
   return names;
 }
 
-async function fetchHotRepoCommits(host, token, org, sinceIso) {
+async function fetchHotRepoCommits(host, token, org, sinceIso, maxPages = 5) {
   const repos = [];
   for (let page = 1; page <= 4; page += 1) {
     const batch = await api(
@@ -397,7 +427,8 @@ async function fetchHotRepoCommits(host, token, org, sinceIso) {
         token,
         repo.full_name,
         sinceIso,
-        sha
+        sha,
+        maxPages
       );
       for (const item of batch) ingestRestCommit(bySha, item);
     }
@@ -405,17 +436,19 @@ async function fetchHotRepoCommits(host, token, org, sinceIso) {
   return bySha;
 }
 
-async function fetchBoard({ gitOrg, now } = {}) {
+async function fetchBoard({ gitOrg, now, days } = {}) {
   const { host, org } = parseGitOrg(
     gitOrg || process.env.GIT_ORG,
     process.env.GH_HOST
   );
   const token = getToken(host);
+  const dayCount = clampDays(days);
   const todayEst = ymdInZone(now || new Date());
-  const dates = overlappingUtcDates(todayEst);
-  const from = dates[0];
-  const to = dates[dates.length - 1];
-  const sinceIso = startOfDayUtc(todayEst).toISOString();
+  const startEst = addUtcDays(todayEst, 1 - dayCount);
+  const from = overlappingUtcDates(startEst)[0];
+  const to = overlappingUtcDates(todayEst)[2];
+  const sinceIso = startOfDayUtc(startEst).toISOString();
+  const commitPages = dayCount > 1 ? 10 : 5;
 
   const [user, byCommitter, byAuthor, prsRaw, prCommits, hotCommits] =
     await Promise.all([
@@ -441,7 +474,7 @@ async function fetchBoard({ gitOrg, now } = {}) {
         `org:${org} type:pr created:${from}..${to}`
       ),
       fetchPrCommits(host, token, org, from, to),
-      fetchHotRepoCommits(host, token, org, sinceIso),
+      fetchHotRepoCommits(host, token, org, sinceIso, commitPages),
     ]);
 
   const commitsBySha = new Map();
@@ -454,11 +487,15 @@ async function fetchBoard({ gitOrg, now } = {}) {
   const commits = [...commitsBySha.values()].filter((item) => {
     const authorDate = item.commit?.author?.date;
     const committerDate = item.commit?.committer?.date;
-    return inEstDay(authorDate, todayEst) || inEstDay(committerDate, todayEst);
+    return (
+      inEstRange(authorDate, startEst, todayEst) ||
+      inEstRange(committerDate, startEst, todayEst)
+    );
   });
 
   const prs = prsRaw.filter(
-    (item) => item.pull_request && inEstDay(item.created_at, todayEst)
+    (item) =>
+      item.pull_request && inEstRange(item.created_at, startEst, todayEst)
   );
 
   const map = new Map();
@@ -515,10 +552,30 @@ async function fetchBoard({ gitOrg, now } = {}) {
   const gapToPodium =
     you.rank <= 3 ? 0 : Math.max(0, (third ? third.commits : 0) - you.commits);
 
+  const dayList = listEstDays(todayEst, dayCount);
+  const buckets = new Map(
+    dayList.map((date) => [date, { date, commits: 0, you: 0 }])
+  );
+  for (const item of commits) {
+    const day = commitEstDay(item);
+    const bucket = day && buckets.get(day);
+    if (!bucket) continue;
+    bucket.commits += 1;
+    const login = String(
+      item.author?.login ||
+        item.commit?.author?.email ||
+        item.commit?.author?.name ||
+        ''
+    ).toLowerCase();
+    if (login && login === youLogin) bucket.you += 1;
+  }
+
   return {
     host,
     org,
     tz: TZ,
+    days: dayCount,
+    start: startEst,
     date: todayEst,
     you,
     top,
@@ -526,10 +583,11 @@ async function fetchBoard({ gitOrg, now } = {}) {
     peopleCount: people.length,
     commitCount: commits.length,
     prCount: prs.length,
+    series: dayList.map((date) => buckets.get(date)),
     gapToPodium,
     onPodium: you.rank <= 3,
     updatedAt: new Date().toISOString(),
   };
 }
 
-module.exports = { fetchBoard, parseGitOrg, ymdInZone };
+module.exports = { fetchBoard, parseGitOrg, ymdInZone, clampDays };

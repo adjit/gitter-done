@@ -73,22 +73,90 @@ body {
   color: var(--ink);
 }
 
-.meta {
-  -webkit-app-region: no-drag;
-  display: block;
-  width: 100%;
+.ghost:disabled {
+  opacity: 0.28;
+  cursor: default;
+}
+
+.sub {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  align-items: center;
   margin-top: 5px;
+  -webkit-app-region: no-drag;
+}
+
+.meta {
+  display: block;
+  overflow: hidden;
   border: 0;
   background: transparent;
   font-family: "Share Tech Mono", ui-monospace, monospace;
   font-size: 10px;
   color: var(--mute);
   text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   cursor: pointer;
 }
 
 .meta:hover {
   color: var(--ink);
+}
+
+.range {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.range .ghost {
+  width: 14px;
+  height: 14px;
+  font-size: 12px;
+}
+
+#rangeLabel {
+  min-width: 2.2ch;
+  font-family: "Share Tech Mono", ui-monospace, monospace;
+  font-size: 10px;
+  color: var(--ink);
+  text-align: center;
+}
+
+.chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 26px;
+  margin-top: 6px;
+  -webkit-app-region: no-drag;
+}
+
+.chart[hidden] {
+  display: none;
+}
+
+.bar {
+  position: relative;
+  flex: 1;
+  height: max(2px, calc(var(--h) * 100%));
+  background: rgba(125, 255, 179, 0.2);
+}
+
+.bar.is-today {
+  background: rgba(255, 183, 3, 0.38);
+}
+
+.bar .you {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: max(0px, calc(var(--h) * 100%));
+  background: var(--live);
+  opacity: 0.85;
 }
 
 .board {

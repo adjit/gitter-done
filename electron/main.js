@@ -4,15 +4,17 @@ const path = require('path');
 
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const { fetchBoard } = require('../src/github');
+const { fetchBoard, clampDays } = require('../src/github');
 
 const POLL_MS = Number(process.env.POLL_MS) || 3 * 60 * 1000;
-const WIDTH = 236;
+const WIDTH = 252;
 const HEIGHT_LOADING = 148;
 
 let win;
 let shotTaken = false;
-let state = { loading: true, error: null, board: null };
+let days = 1;
+let fetchId = 0;
+let state = { loading: true, error: null, board: null, days: 1 };
 
 function createWindow() {
   const { workArea } = screen.getPrimaryDisplay();
@@ -41,15 +43,22 @@ function createWindow() {
   win.once('ready-to-show', () => win.show());
 }
 
-async function refresh() {
+async function refresh(nextDays = days) {
+  days = clampDays(nextDays);
+  const id = (fetchId += 1);
+  state = { ...state, loading: true, days };
+  if (win && !win.isDestroyed()) win.webContents.send('state', state);
   try {
-    const board = await fetchBoard();
-    state = { loading: false, error: null, board };
+    const board = await fetchBoard({ days });
+    if (id !== fetchId) return state;
+    state = { loading: false, error: null, board, days };
   } catch (err) {
+    if (id !== fetchId) return state;
     state = {
       loading: false,
       error: err.message || String(err),
       board: state.board,
+      days,
     };
   }
   if (win && !win.isDestroyed()) {
@@ -62,14 +71,22 @@ async function refresh() {
         const collapsed = await win.webContents.capturePage();
         fs.writeFileSync(shotPath, collapsed.toPNG());
         await win.webContents.executeJavaScript(
-          "document.getElementById('meta').click()"
+          "document.getElementById('rangeUp').click()"
         );
-        await new Promise((resolve) => setTimeout(resolve, 700));
+        const deadline = Date.now() + 70000;
+        while (Date.now() < deadline) {
+          await new Promise((resolve) => setTimeout(resolve, 1500));
+          if (!win || win.isDestroyed()) return;
+          const ready = await win.webContents.executeJavaScript(
+            "Boolean(window.__gitterDays && window.__gitterDays > 1)"
+          );
+          if (ready) break;
+        }
         if (!win || win.isDestroyed()) return;
-        const opened = await win.webContents.capturePage();
+        const week = await win.webContents.capturePage();
         fs.writeFileSync(
-          shotPath.replace(/\.png$/i, '-open.png'),
-          opened.toPNG()
+          shotPath.replace(/\.png$/i, '-7d.png'),
+          week.toPNG()
         );
       }, 1800);
     }
@@ -80,7 +97,8 @@ async function refresh() {
 app.whenReady().then(() => {
   createWindow();
   ipcMain.handle('state:get', () => state);
-  ipcMain.handle('state:refresh', () => refresh());
+  ipcMain.handle('state:refresh', () => refresh(days));
+  ipcMain.handle('state:days', (_event, nextDays) => refresh(nextDays));
   ipcMain.on('app:quit', () => app.quit());
   ipcMain.on('window:resize', (_event, height) => {
     if (!win || win.isDestroyed()) return;

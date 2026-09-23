@@ -23,7 +23,15 @@
         <button type="button" class="ghost" id="refresh" title="Refresh">↻</button>
         <button type="button" class="ghost" id="quit" title="Close">×</button>
       </header>
-      <button type="button" class="meta" id="meta">waiting on git</button>
+      <div class="sub">
+        <button type="button" class="meta" id="meta">waiting on git</button>
+        <div class="range">
+          <button type="button" class="ghost" id="rangeDown" title="Fewer days">−</button>
+          <span id="rangeLabel">1d</span>
+          <button type="button" class="ghost" id="rangeUp" title="More days">+</button>
+        </div>
+      </div>
+      <div class="chart" id="chart" hidden></div>
       <ol class="board" id="board"></ol>
       <section class="you-wrap" id="youWrap" hidden>
         <div class="rule"></div>

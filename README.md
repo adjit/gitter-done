@@ -60,17 +60,20 @@ npm run board
 
 - Drag the title bar to move the overlay
 - Click the subtitle or the list to open the full ranking; click again to collapse
+- `+` / `−` switch the window: 1 day, 7 days, 14 days, or 30 days. Windows longer than today show a tiny daily graph (org volume, mint = you)
 - ↻ refreshes immediately
 - × quits
 - Rankings refresh every 3 minutes
 
+Print a range in the terminal with `npm run board 7`.
+
 ## What it counts
 
-Commits **authored today in America/New_York**, including:
+Commits **authored in America/New_York** for the selected window, including:
 
-- `main` / `develop` on every org repo pushed today
-- other branches that moved today on the busiest repos
-- commits on pull requests updated today
+- `main` / `develop` on every org repo pushed in that window
+- other branches that moved on the busiest repos
+- commits on pull requests updated in that window
 
 Bots (GitHub Actions, `*-bot`, Grafana) are excluded. People are ranked by commit count.
 
