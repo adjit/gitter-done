@@ -98,13 +98,27 @@ function weekday(isoDate) {
     .toLowerCase();
 }
 
+function formatLines(n) {
+  const v = Number(n);
+  if (!Number.isFinite(v)) return '';
+  if (Math.abs(v) >= 100000) return `${Math.round(v / 1000)}k`;
+  if (Math.abs(v) >= 10000) {
+    return `${(v / 1000).toFixed(1).replace(/\.0$/, '')}k`;
+  }
+  return String(v);
+}
+
 function rowHtml(person, extraClass = '') {
   const podium = person.rank <= 3 ? `p${person.rank}` : '';
+  const hasLines = person.additions != null;
+  const lines = hasLines
+    ? `<span class="lines">+${escapeHtml(formatLines(person.additions))}</span>`
+    : '';
   return `
     <div class="row ${podium} ${extraClass}">
       <span class="rank">${person.rank}</span>
       <span class="name">${escapeHtml(person.handle || person.login)}</span>
-      <span class="count">${person.commits}</span>
+      <span class="count">${lines}<span class="n">${person.commits}</span></span>
     </div>
   `;
 }

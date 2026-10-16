@@ -1,6 +1,12 @@
 const fs = require('fs');
 const { execFileSync } = require('child_process');
 const { parseGitOrg } = require('./parseOrg');
+const {
+  defaultStatsCachePath,
+  hydrateVisibleLines,
+  isMergeCommit,
+  repoFromCommit,
+} = require('./commitStats');
 
 const COMMIT_ACCEPT = 'application/vnd.github.cloak-preview+json';
 const TZ = process.env.GIT_TZ || 'America/New_York';
@@ -11,6 +17,7 @@ query($q: String!, $after: String) {
     pageInfo { hasNextPage endCursor }
     nodes {
       ... on PullRequest {
+        repository { nameWithOwner }
         commits(first: 100) {
           nodes {
             commit {
@@ -280,7 +287,7 @@ function resolveKey(map, login, name) {
 }
 
 function addPerson(map, { login, name, avatar, commits, prs }) {
-  if (!login || isBot(login, name)) return;
+  if (!login || isBot(login, name)) return null;
   const key = resolveKey(map, login, name);
   const handle = displayHandle(login, name);
   const prev = map.get(key) || {
@@ -290,7 +297,9 @@ function addPerson(map, { login, name, avatar, commits, prs }) {
     avatar: avatar || '',
     commits: 0,
     prs: 0,
+    commitEntries: [],
   };
+  if (!prev.commitEntries) prev.commitEntries = [];
   prev.commits += commits || 0;
   prev.prs += prs || 0;
   if (name) prev.name = name;
@@ -298,19 +307,23 @@ function addPerson(map, { login, name, avatar, commits, prs }) {
   if (login && !String(login).includes('@')) prev.login = login;
   prev.handle = displayHandle(prev.login, prev.name);
   map.set(key, prev);
+  return key;
 }
 
 function ingestRestCommit(bySha, item) {
   const sha = item.sha;
   if (!sha || bySha.has(sha)) return;
+  const repo = repoFromCommit(item);
+  if (repo) item.repo = repo;
   bySha.set(sha, item);
 }
 
-function ingestGraphqlCommit(bySha, commit) {
+function ingestGraphqlCommit(bySha, commit, repo) {
   const sha = commit?.oid;
   if (!sha || bySha.has(sha)) return;
   bySha.set(sha, {
     sha,
+    repo: repo || null,
     author: commit.author?.user || null,
     commit: {
       author: {
@@ -333,8 +346,9 @@ async function fetchPrCommits(host, token, org, from, to) {
     });
     const search = data.search;
     for (const node of search.nodes || []) {
+      const repo = node.repository?.nameWithOwner || null;
       for (const edge of node.commits?.nodes || []) {
-        ingestGraphqlCommit(bySha, edge.commit);
+        ingestGraphqlCommit(bySha, edge.commit, repo);
       }
     }
     if (!search.pageInfo?.hasNextPage) break;
@@ -504,11 +518,19 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
       item.author?.login ||
       item.commit?.author?.email ||
       item.commit?.author?.name;
-    addPerson(map, {
+    const key = addPerson(map, {
       login,
       name: item.commit?.author?.name || login,
       avatar: item.author?.avatar_url || '',
       commits: 1,
+    });
+    if (!key) continue;
+    const person = map.get(key);
+    person.commitEntries.push({
+      sha: item.sha,
+      repo: repoFromCommit(item),
+      date: item.commit?.author?.date || item.commit?.committer?.date || '',
+      merge: isMergeCommit(item),
     });
   }
   for (const item of prs) {
@@ -531,6 +553,20 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
     .map((person, i) => ({ ...person, rank: i + 1 }));
 
   const youLogin = String(user.login || '').toLowerCase();
+  if (dayCount === 1) {
+    await hydrateVisibleLines({
+      host,
+      token,
+      api,
+      mapPool,
+      org,
+      todayEst,
+      people,
+      youLogin,
+      cachePath: defaultStatsCachePath(),
+    });
+  }
+
   const youIndex = people.findIndex(
     (p) => String(p.login).toLowerCase() === youLogin
   );
@@ -546,6 +582,9 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
           prs: 0,
           rank: people.length + 1,
         };
+
+  for (const person of people) delete person.commitEntries;
+  delete you.commitEntries;
 
   const top = people.slice(0, 3);
   const third = people[2];

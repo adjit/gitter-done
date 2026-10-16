@@ -229,13 +229,24 @@ body {
 }
 
 .count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
   font-family: "Share Tech Mono", ui-monospace, monospace;
-  font-size: 13px;
-  min-width: 2ch;
   text-align: right;
 }
 
-.row.p1 .count {
+.count .n {
+  font-size: 13px;
+  min-width: 2ch;
+}
+
+.count .lines {
+  font-size: 10px;
+  color: var(--mute);
+}
+
+.row.p1 .count .n {
   color: var(--amber);
 }
 

@@ -77,6 +77,8 @@ Commits **authored in America/New_York** for the selected window, including:
 
 Bots (GitHub Actions, `*-bot`, Grafana) are excluded. People are ranked by commit count.
 
+On the **1-day** overlay, the visible podium (top 3, and you if you are off it) also shows lines added. Those stats are cached under `~/.gitter-done/commit-stats.json` and only refetched when that person’s commit set changes; new commits are hydrated from the last seen timestamp. Merge commits count as 0 lines. 7 / 14 / 30 day views stay commit-count only.
+
 ## Config
 
 | Variable | Required | Default | Meaning |

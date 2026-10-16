@@ -21,8 +21,12 @@ fetchBoard({ days })
     }
     for (const person of board.people) {
       const mark = person.login === board.you.login ? ' *' : '';
+      const lines =
+        person.additions != null
+          ? `  +${person.additions}/-${person.deletions || 0}`
+          : '';
       console.log(
-        `${String(person.rank).padStart(3)}  ${String(person.handle || person.login).padEnd(20)} ${String(person.commits).padStart(3)}c  ${person.prs}pr${mark}`
+        `${String(person.rank).padStart(3)}  ${String(person.handle || person.login).padEnd(20)} ${String(person.commits).padStart(3)}c  ${person.prs}pr${lines}${mark}`
       );
     }
   })
