@@ -191,8 +191,12 @@ function render(state) {
   }
 
   const youLogin = String(board.you.login || '').toLowerCase();
-  const isYou = (person) =>
-    String(person.login).toLowerCase() === youLogin;
+  const youHandle = String(board.you.handle || '').toLowerCase();
+  const isYou = (person) => {
+    const login = String(person.login || '').toLowerCase();
+    const handle = String(person.handle || '').toLowerCase();
+    return login === youLogin || (youHandle && handle === youHandle);
+  };
 
   shellEl.classList.toggle('is-open', expanded);
   renderChart(board);

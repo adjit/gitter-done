@@ -73,6 +73,7 @@ Commits **authored in America/New_York** for the selected window, including:
 
 - `main` / `develop` on every org repo pushed in that window
 - other branches that moved on the busiest repos
+- branches **you** pushed in that window (feature-branch work counts even off `main`)
 - commits on pull requests updated in that window
 
 Bots (GitHub Actions, `*-bot`, Grafana) are excluded. People are ranked by commit count.

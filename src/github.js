@@ -286,6 +286,48 @@ function resolveKey(map, login, name) {
   return String(login).toLowerCase();
 }
 
+function youAliases(user) {
+  const aliases = new Set();
+  const add = (value) => {
+    const s = String(value || '')
+      .trim()
+      .toLowerCase();
+    if (s) aliases.add(s);
+  };
+  add(user?.login);
+  add(user?.name);
+  add(user?.email);
+  const email = String(user?.email || '');
+  if (email.includes('@')) add(email.split('@')[0]);
+  return aliases;
+}
+
+function valueIsYou(value, aliases) {
+  const s = String(value || '')
+    .trim()
+    .toLowerCase();
+  if (!s) return false;
+  if (aliases.has(s)) return true;
+  if (s.includes('@')) return aliases.has(s.split('@')[0]);
+  return false;
+}
+
+function personIsYou(person, aliases) {
+  return (
+    valueIsYou(person?.login, aliases) ||
+    valueIsYou(person?.handle, aliases) ||
+    valueIsYou(person?.name, aliases)
+  );
+}
+
+function commitIsYou(item, aliases) {
+  return (
+    valueIsYou(item?.author?.login, aliases) ||
+    valueIsYou(item?.commit?.author?.email, aliases) ||
+    valueIsYou(item?.commit?.author?.name, aliases)
+  );
+}
+
 function addPerson(map, { login, name, avatar, commits, prs }) {
   if (!login || isBot(login, name)) return null;
   const key = resolveKey(map, login, name);
@@ -406,6 +448,77 @@ async function recentBranchNames(host, token, repo, sinceIso) {
   return names;
 }
 
+async function listUserEvents(host, token, login, maxPages = 3) {
+  const items = [];
+  for (let page = 1; page <= maxPages; page += 1) {
+    let batch;
+    try {
+      batch = await api(
+        host,
+        token,
+        `users/${encodeURIComponent(login)}/events?per_page=100&page=${page}`
+      );
+    } catch {
+      break;
+    }
+    if (!Array.isArray(batch) || batch.length === 0) break;
+    items.push(...batch);
+    if (batch.length < 100) break;
+  }
+  return items;
+}
+
+async function fetchYourPushedCommits(
+  host,
+  token,
+  org,
+  userLogin,
+  sinceIso,
+  maxPages = 5
+) {
+  if (!userLogin) return new Map();
+  let events;
+  try {
+    events = await listUserEvents(host, token, userLogin);
+  } catch {
+    return new Map();
+  }
+
+  const orgPrefix = `${String(org).toLowerCase()}/`;
+  const sinceMs = new Date(sinceIso).getTime();
+  const branchesByRepo = new Map();
+  for (const event of events) {
+    if (event?.type !== 'PushEvent') continue;
+    if (event.created_at && new Date(event.created_at).getTime() < sinceMs) {
+      continue;
+    }
+    const repo = event.repo?.name;
+    if (!repo || !String(repo).toLowerCase().startsWith(orgPrefix)) continue;
+    const branch = String(event.payload?.ref || '').replace(/^refs\/heads\//, '');
+    if (!branch) continue;
+    if (!branchesByRepo.has(repo)) branchesByRepo.set(repo, new Set());
+    branchesByRepo.get(repo).add(branch);
+  }
+
+  const bySha = new Map();
+  const jobs = [];
+  for (const [repo, branches] of branchesByRepo) {
+    for (const branch of branches) jobs.push({ repo, branch });
+  }
+  await mapPool(jobs, 5, async ({ repo, branch }) => {
+    const batch = await listRepoCommitsSince(
+      host,
+      token,
+      repo,
+      sinceIso,
+      branch,
+      maxPages
+    );
+    for (const item of batch) ingestRestCommit(bySha, item);
+  });
+  return bySha;
+}
+
 async function fetchHotRepoCommits(host, token, org, sinceIso, maxPages = 5) {
   const repos = [];
   for (let page = 1; page <= 4; page += 1) {
@@ -464,9 +577,31 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
   const sinceIso = startOfDayUtc(startEst).toISOString();
   const commitPages = dayCount > 1 ? 10 : 5;
 
-  const [user, byCommitter, byAuthor, prsRaw, prCommits, hotCommits] =
+  const user = await api(host, token, 'user');
+  const aliases = youAliases(user);
+  const youLogin = String(user.login || '').toLowerCase();
+  const authorSearch = youLogin
+    ? searchRange(
+        host,
+        token,
+        'search/commits',
+        `org:${org} author:${youLogin} author-date:${from}..${to}`,
+        COMMIT_ACCEPT
+      ).catch(() => [])
+    : Promise.resolve([]);
+  const yourPushed = youLogin
+    ? fetchYourPushedCommits(
+        host,
+        token,
+        org,
+        user.login,
+        sinceIso,
+        commitPages
+      ).catch(() => new Map())
+    : Promise.resolve(new Map());
+
+  const [byCommitter, byAuthor, byYou, prsRaw, prCommits, hotCommits, yourCommits] =
     await Promise.all([
-      api(host, token, 'user'),
       searchRange(
         host,
         token,
@@ -481,6 +616,7 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
         `org:${org} author-date:${from}..${to}`,
         COMMIT_ACCEPT
       ),
+      authorSearch,
       searchRange(
         host,
         token,
@@ -489,14 +625,16 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
       ),
       fetchPrCommits(host, token, org, from, to),
       fetchHotRepoCommits(host, token, org, sinceIso, commitPages),
+      yourPushed,
     ]);
 
   const commitsBySha = new Map();
-  for (const item of [...byCommitter, ...byAuthor]) {
+  for (const item of [...byCommitter, ...byAuthor, ...byYou]) {
     ingestRestCommit(commitsBySha, item);
   }
   for (const [sha, item] of prCommits) ingestRestCommit(commitsBySha, item);
   for (const [sha, item] of hotCommits) ingestRestCommit(commitsBySha, item);
+  for (const [sha, item] of yourCommits) ingestRestCommit(commitsBySha, item);
 
   const commits = [...commitsBySha.values()].filter((item) => {
     const authorDate = item.commit?.author?.date;
@@ -552,7 +690,15 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
     })
     .map((person, i) => ({ ...person, rank: i + 1 }));
 
-  const youLogin = String(user.login || '').toLowerCase();
+  const youIndex = people.findIndex((p) => personIsYou(p, aliases));
+  if (youIndex >= 0 && user.login) {
+    people[youIndex].login = user.login;
+    people[youIndex].handle = displayHandle(
+      user.login,
+      people[youIndex].name
+    );
+  }
+
   if (dayCount === 1) {
     await hydrateVisibleLines({
       host,
@@ -566,10 +712,6 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
       cachePath: defaultStatsCachePath(),
     });
   }
-
-  const youIndex = people.findIndex(
-    (p) => String(p.login).toLowerCase() === youLogin
-  );
   const you =
     youIndex >= 0
       ? { ...people[youIndex] }
@@ -600,13 +742,7 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
     const bucket = day && buckets.get(day);
     if (!bucket) continue;
     bucket.commits += 1;
-    const login = String(
-      item.author?.login ||
-        item.commit?.author?.email ||
-        item.commit?.author?.name ||
-        ''
-    ).toLowerCase();
-    if (login && login === youLogin) bucket.you += 1;
+    if (commitIsYou(item, aliases)) bucket.you += 1;
   }
 
   return {
@@ -629,4 +765,12 @@ async function fetchBoard({ gitOrg, now, days } = {}) {
   };
 }
 
-module.exports = { fetchBoard, parseGitOrg, ymdInZone, clampDays };
+module.exports = {
+  fetchBoard,
+  parseGitOrg,
+  ymdInZone,
+  clampDays,
+  youAliases,
+  personIsYou,
+  commitIsYou,
+};
